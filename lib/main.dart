@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import 'services/db_service.dart';
 import 'services/license_service.dart';
+import 'services/sync_service.dart';
 import 'native_bridge.dart';
 import 'core/session_manager.dart';
 import 'controllers/cart_controller.dart';

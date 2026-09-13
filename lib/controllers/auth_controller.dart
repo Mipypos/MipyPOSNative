@@ -74,4 +74,7 @@ class AuthController extends ChangeNotifier {
   bool get isSeller => _user?['role'] == 'seller';
   bool get isStorekeeper => _user?['role'] == 'storekeeper';
   bool get isGuest => _user?['role'] == 'guest';
+
+  // Added to match checks in UI. Returns true if the user's role is 'supervisor'.
+  bool get isSupervisor => _user?['role'] == 'supervisor';
 }
