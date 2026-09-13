@@ -1,19 +1,70 @@
-# Android SDK update
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+}
 
-Updated compileSdk and targetSdk to 35 to satisfy plugin requirements.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
 
-apply plugin: 'com.android.application'
+def flutterRoot = localProperties.getProperty('flutter.sdk')
+if (flutterRoot == null) {
+    throw new GradleException("Flutter SDK not found. Define flutter.sdk in local.properties.")
+}
+
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
+    namespace "com.mipypos.app"
     compileSdk = 35
 
     defaultConfig {
         applicationId "com.mipypos.app"
-        minSdkVersion 21
-        targetSdk 35
+        minSdk = 21
+        targetSdk = 35
         versionCode 1
         versionName "1.0"
+        vectorDrawables.useSupportLibrary = true
     }
 
-    // rest of the gradle configuration unchanged
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.debug
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    packagingOptions {
+        exclude 'META-INF/proguard/androidx-*.pro'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24"
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.15.0'
 }
