@@ -1,6 +1,3 @@
-// Restored DBService from main branch to replace placeholder content.
-// File copied from main commit to ensure buildability.
-
 // lib/services/db_service.dart
 // Servicio central de acceso a datos (Hive). Incluye métodos públicos usados por la app.
 // Llamar a `await DBService.init()` desde main() después de `Hive.initFlutter()`.
@@ -87,6 +84,7 @@ class DBService {
       await _products.clear();
       await _sales.clear();
       await _saleItems.clear();
+      await _cash_sessions.clear();
       await _cashSessions.clear();
       await _areas.clear();
       await _movements.clear();
