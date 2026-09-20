@@ -1,8 +1,6 @@
 // lib/screens/sales_screen.dart
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 
 import '../controllers/cart_controller.dart';
 import '../controllers/auth_controller.dart';
@@ -83,7 +81,6 @@ class _SalesScreenState extends State<SalesScreen> {
 
     if (cart.items.isEmpty || processingSale) return;
 
-    // Validar turno abierto en memoria
     if (!sessionManager.isOpen) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -93,7 +90,6 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
-    // Snapshot de items antes de hacer checkout (checkout limpia el carrito)
     final itemsSnapshot = cart.items.map((it) {
       return {
         'name': it.name,
@@ -102,7 +98,6 @@ class _SalesScreenState extends State<SalesScreen> {
       };
     }).toList();
 
-    // Si modo Mixto, validar montos y preparar payments
     List<Map<String, dynamic>>? paymentsToSend;
     if (selectedPayment == 'Mixto') {
       final cash = double.tryParse(cashAmountCtrl.text) ?? 0.0;
@@ -122,7 +117,6 @@ class _SalesScreenState extends State<SalesScreen> {
       if (transfer > 0) paymentsToSend.add({'method': 'Transferencia', 'amount': transfer});
     }
 
-    // Confirmación antes de cobrar
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -144,11 +138,9 @@ class _SalesScreenState extends State<SalesScreen> {
     setState(() => processingSale = true);
 
     try {
-      // Antes de procesar, validar en la DB que la caja sigue abierta y que coincide con la sesión en memoria
       final openSession = await DBService.getOpenCash();
       final sidMemory = sessionManager.sessionId;
       if (openSession == null) {
-        // La caja fue cerrada en la DB entre la confirmación y el cobro
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('❌ La caja fue cerrada. No se puede procesar la venta.')),
@@ -158,7 +150,6 @@ class _SalesScreenState extends State<SalesScreen> {
       }
       final sidDb = (openSession['id'] is int) ? openSession['id'] as int : int.tryParse('${openSession['id']}');
       if (sidMemory == null || sidDb != sidMemory) {
-        // Desincronización: recargar sesión en memoria y avisar
         await sessionManager.loadSession();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -168,7 +159,6 @@ class _SalesScreenState extends State<SalesScreen> {
         return;
       }
 
-      // Preparar texto del ticket usando snapshot y conversiones seguras
       final ticketTextBuffer = StringBuffer();
       ticketTextBuffer.writeln('MipyPOS - Ticket de Venta');
       ticketTextBuffer.writeln('-------------------------');
@@ -185,7 +175,6 @@ class _SalesScreenState extends State<SalesScreen> {
         ticketTextBuffer.writeln('- $name x$qty = \$${lineTotal.toStringAsFixed(2)}');
       }
 
-      // Añadir detalle de pagos si existe
       if (paymentsToSend != null && paymentsToSend.isNotEmpty) {
         ticketTextBuffer.writeln('');
         ticketTextBuffer.writeln('Pagos:');
@@ -194,24 +183,20 @@ class _SalesScreenState extends State<SalesScreen> {
         }
       }
 
-      // Ejecutar checkout pasando sessionId explícito y el detalle de pagos mixtos.
       final saleId = await cart.checkout(
         method: selectedPayment,
         user: auth.user?['user'] ?? 'desconocido',
-        sessionId: sidMemory!,
+        sessionId: sidMemory,
         payments: paymentsToSend,
       );
 
-      // Generar ticket (PDF o archivo) a partir del texto.
-      // Si el sistema de ficheros no permite escribir en Downloads, la venta se debe seguir guardando.
-      final Uint8List ticketBytes = Uint8List.fromList(ticketTextBuffer.toString().codeUnits);
+      final ticketBytes = ticketTextBuffer.toString().codeUnits;
       try {
         await PdfService.generateTicket(ticketBytes);
       } catch (e) {
         debugPrint('Ticket write failed: $e');
       }
 
-      // Recargar productos para reflejar cambios de stock
       await loadProducts();
 
       if (mounted) {
@@ -261,20 +246,6 @@ class _SalesScreenState extends State<SalesScreen> {
     return buffer.toString();
   }
 
-  Future<void> _previewTicket() async {
-    final txt = _generateTicketText();
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Vista previa del ticket'),
-        content: SingleChildScrollView(child: SelectableText(txt)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartController>();
@@ -304,7 +275,6 @@ class _SalesScreenState extends State<SalesScreen> {
               final bool isWide = constraints.maxWidth > 900;
               return Row(
                 children: [
-                  // Left: Product grid / search
                   Expanded(
                     flex: isWide ? 3 : 1,
                     child: Column(
@@ -370,9 +340,12 @@ class _SalesScreenState extends State<SalesScreen> {
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
                                                   Text('\$${price.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                                                  ElevatedButton(onPressed: stock > 0 ? () => context.read<CartController>().add({'id': p['id'], 'name': p['name'], 'price': price}) : null, child: const Text('Agregar')),
+                                                  ElevatedButton(
+                                                    onPressed: stock > 0 ? () => context.read<CartController>().add({'id': p['id'], 'name': p['name'], 'price': price}) : null,
+                                                    child: const Text('Añadir'),
+                                                  ),
                                                 ],
-                                              )
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -385,7 +358,6 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                   ),
 
-                  // Right: Cart + payments
                   Container(
                     width: isWide ? 420 : 360,
                     decoration: BoxDecoration(
