@@ -15,43 +15,25 @@ import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Inicializar Hive, DBService y licencia
   await Hive.initFlutter();
   await DBService.init();
   await LicenseService.init();
   await LicenseService.ensureDemoModeIfNoLicense();
-  // Configurar puente nativo <-> Dart
+
   try {
     NativeBridge.setup();
-  } catch (e) {
-    debugPrint('Warning: NativeBridge.setup() failed: $e');
+  } catch (error) {
+    debugPrint('Warning: NativeBridge.setup() failed: $error');
   }
 
-  // Inicializar Sincronización P2P
-  final syncService = SyncService();
-  // Si es el dispositivo principal (Admin), iniciamos server
-  // Nota: En una implementación real, esto se activaría tras el login del admin
-  // Por ahora lo dejamos preparado para el arranque.
-
-  // Crear instancias compartidas
   final auth = AuthController();
   final sessionManager = SessionManager();
-
-  // Cargar la sesión de caja en memoria ANTES de construir la UI.
-  // Esto evita que la UI de ventas piense que la caja está cerrada cuando en DB hay una sesión abierta.
   try {
     await sessionManager.loadSession();
-  } catch (e) {
-    // No detener el arranque por un fallo en carga de sesión; log para debugging.
-    debugPrint('Warning: sessionManager.loadSession() failed: $e');
+  } catch (error) {
+    debugPrint('Warning: sessionManager.loadSession() failed: $error');
   }
 
-  // Opcional: si quieres restaurar usuario persistente en web/desktop,
-  // llama a auth.loadFromStorage() aquí (controlado). Por ahora lo dejamos desactivado.
-  // await auth.loadFromStorage();
-
-  // Manejo global de errores para que no queden silenciosos en web/desktop
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     debugPrint('FlutterError: ${details.exceptionAsString()}');
