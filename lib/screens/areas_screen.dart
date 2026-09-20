@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../services/db_service.dart';
-import '../controllers/auth_controller.dart';
 import 'package:provider/provider.dart';
+
+import '../controllers/auth_controller.dart';
+import '../services/db_service.dart';
 
 class AreasScreen extends StatefulWidget {
   const AreasScreen({super.key});
@@ -44,26 +45,27 @@ class _AreasScreenState extends State<AreasScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Crear área"),
+        title: const Text('Crear área'),
         content: TextField(
           controller: nameCtrl,
-          decoration: const InputDecoration(labelText: "Nombre del área"),
+          decoration: const InputDecoration(labelText: 'Nombre del área'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar"),
+            child: const Text('Cancelar'),
           ),
           ElevatedButton(
             onPressed: () async {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
+
               await DBService.addArea(name);
               if (!context.mounted) return;
               Navigator.pop(context);
               await cargarDatos();
             },
-            child: const Text("Crear"),
+            child: const Text('Crear'),
           ),
         ],
       ),
@@ -75,7 +77,7 @@ class _AreasScreenState extends State<AreasScreen> {
 
     if (auth.user?['role'] != 'storekeeper') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Solo el almacenista puede enviar productos")),
+        const SnackBar(content: Text('Solo el almacenista puede enviar productos')),
       );
       return;
     }
@@ -88,51 +90,54 @@ class _AreasScreenState extends State<AreasScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Mover producto entre áreas"),
+        title: const Text('Mover producto entre áreas'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<int>(
-              decoration: const InputDecoration(labelText: "Producto"),
-              items: products.map<DropdownMenuItem<int>>((p) {
+              decoration: const InputDecoration(labelText: 'Producto'),
+              items: products.map((p) {
                 return DropdownMenuItem<int>(
                   value: p['id'] as int,
-                  child: Text(p['name']),
+                  child: Text(p['name'] ?? ''),
                 );
               }).toList(),
               onChanged: (v) => productoId = v,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              decoration: const InputDecoration(labelText: "Desde área"),
-              items: areas.map<DropdownMenuItem<int>>((a) {
+              decoration: const InputDecoration(labelText: 'Desde área'),
+              items: areas.map((a) {
                 return DropdownMenuItem<int>(
                   value: a['id'] as int,
-                  child: Text(a['name']),
+                  child: Text(a['name'] ?? ''),
                 );
               }).toList(),
               onChanged: (v) => fromArea = v,
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              decoration: const InputDecoration(labelText: "Hacia área"),
-              items: areas.map<DropdownMenuItem<int>>((a) {
+              decoration: const InputDecoration(labelText: 'Hacia área'),
+              items: areas.map((a) {
                 return DropdownMenuItem<int>(
                   value: a['id'] as int,
-                  child: Text(a['name']),
+                  child: Text(a['name'] ?? ''),
                 );
               }).toList(),
               onChanged: (v) => toArea = v,
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: qtyCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Cantidad"),
+              decoration: const InputDecoration(labelText: 'Cantidad'),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar"),
+            child: const Text('Cancelar'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -152,7 +157,7 @@ class _AreasScreenState extends State<AreasScreen> {
               Navigator.pop(context);
               await cargarDatos();
             },
-            child: const Text("Enviar"),
+            child: const Text('Enviar'),
           ),
         ],
       ),
@@ -164,7 +169,7 @@ class _AreasScreenState extends State<AreasScreen> {
 
     if (auth.user?['role'] != 'seller') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Solo el cajero puede confirmar entradas")),
+        const SnackBar(content: Text('Solo el cajero puede confirmar entradas')),
       );
       return;
     }
@@ -181,7 +186,7 @@ class _AreasScreenState extends State<AreasScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Entrada confirmada")),
+      const SnackBar(content: Text('Entrada confirmada')),
     );
 
     await cargarDatos();
@@ -207,7 +212,9 @@ class _AreasScreenState extends State<AreasScreen> {
 
   void selectArea(int? areaId) {
     setState(() => selectedAreaId = areaId);
-    Navigator.pop(context);
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   Widget _buildAreasDrawer(AuthController auth) {
@@ -220,15 +227,23 @@ class _AreasScreenState extends State<AreasScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
               ),
-              child: const Align(
+              child: Align(
                 alignment: Alignment.bottomLeft,
-                child: Text(
-                  'Áreas',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Icon(Icons.warehouse, color: Colors.white, size: 28),
+                    SizedBox(height: 8),
+                    Text(
+                      'Áreas',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -251,11 +266,13 @@ class _AreasScreenState extends State<AreasScreen> {
                           leading: const Icon(Icons.home_work_outlined),
                           title: Text(area['name']?.toString() ?? 'Sin nombre'),
                           selected: selectedAreaId == id,
+                          trailing: selectedAreaId == id ? const Icon(Icons.check) : null,
                           onTap: () => selectArea(id),
                         );
                       },
                     ),
             ),
+            const Divider(),
             if (auth.isAdmin)
               ListTile(
                 leading: const Icon(Icons.add),
@@ -317,6 +334,7 @@ class _AreasScreenState extends State<AreasScreen> {
                     final confirmed = movement['confirmed_by_seller'] == true;
 
                     return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: ListTile(
                         leading: const Icon(Icons.swap_horiz),
                         title: Text(
