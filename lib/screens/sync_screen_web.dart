@@ -7,146 +7,86 @@ import '../services/db_service.dart';
 class SyncScreen extends StatelessWidget {
   const SyncScreen({super.key});
 
-  // Ejemplo de datos de productos
-  List<Map<String, dynamic>> _dummyProducts() => [
-        {'id': 1, 'nombre': 'Café', 'precio': 25.0},
-        {'id': 2, 'nombre': 'Pan', 'precio': 10.0},
-      ];
-
   Future<Map<String, dynamic>> _buildExportData() async {
-    final productos = await DBService.getProducts();
-    final ventas = await DBService.getSalesOfDay();
-    final movimientos = await DBService.getMovements();
-    final caja = await DBService.getCashSessions();
-
     return {
-      'productos': productos,
-      'ventas': ventas,
-      'movimientos': movimientos,
-      'caja': caja,
+      'productos': await DBService.getProducts(),
+      'ventas': await DBService.getSalesOfDay(),
+      'movimientos': await DBService.getMovements(),
+      'caja': await DBService.getCashSessions(),
       'exported_at': DateTime.now().toIso8601String(),
     };
   }
 
-  void _exportJson(BuildContext context, Map<String, dynamic> data) {
-    final jsonString = jsonEncode(data);
-    final blob = html.Blob([jsonString], 'application/json');
+  void _download(String content, String filename, String mimeType) {
+    final blob = html.Blob([content], mimeType);
     final url = html.Url.createObjectUrlFromBlob(blob);
-
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'backup_mipypos.json'
+    html.AnchorElement(href: url)
+      ..download = filename
       ..click();
-
     html.Url.revokeObjectUrl(url);
   }
 
-  void _importJson(BuildContext context, Map<String, dynamic> data) async {
-    if (data['productos'] is List) {
-      for (final item in List.from(data['productos'])) {
-        if (item is Map<String, dynamic>) {
-          await DBService.upsertProduct(item);
-        } else if (item is Map) {
+  Future<void> _importJson(BuildContext context, Map<String, dynamic> data) async {
+    final products = data['productos'];
+    if (products is List) {
+      for (final item in products) {
+        if (item is Map) {
           await DBService.upsertProduct(Map<String, dynamic>.from(item));
         }
       }
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('JSON importado correctamente')),
-    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('JSON importado correctamente')),
+      );
+    }
   }
 
   void _openJsonUpload(BuildContext context) {
-    final uploadInput = html.FileUploadInputElement()..accept = '.json';
-    uploadInput.click();
-
-    uploadInput.onChange.listen((event) {
-      final file = uploadInput.files?.first;
+    final input = html.FileUploadInputElement()..accept = '.json';
+    input.click();
+    input.onChange.listen((_) {
+      final file = input.files?.first;
       if (file == null) return;
-
-      final reader = html.FileReader();
-      reader.readAsText(file);
-      reader.onLoadEnd.listen((event) {
-        final content = reader.result as String;
-        final data = jsonDecode(content) as Map<String, dynamic>;
-        _importJson(context, data);
-      });
-    });
-  }
-
-  Future<void> _exportProductsCsv(BuildContext context) async {
-    final products = await DBService.getProducts();
-    final buffer = StringBuffer();
-    buffer.writeln('id;nombre;stock;price_cash;price_transfer');
-
-    for (final p in products) {
-      buffer.writeln(
-          '${p['id']};${p['name']};${p['stock']};${p['price_cash']};${p['price_transfer']}');
-    }
-
-    final blob = html.Blob([buffer.toString()], 'text/csv');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'productos_mipypos.csv'
-      ..click();
-
-    html.Url.revokeObjectUrl(url);
-  }
-
-  // Exportar CSV de cierre de turno (ejemplo)
-  void _exportShiftCsv(BuildContext context) async {
-    final cierre = await DBService.getShiftSummary();
-
-    final buffer = StringBuffer();
-    buffer.writeln('fecha;ventas;efectivo;tarjeta');
-    buffer.writeln(
-        '${cierre['fecha']};${cierre['ventas']};${cierre['efectivo']};${cierre['tarjeta']}');
-
-    final blob = html.Blob([buffer.toString()], 'text/csv');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'cierre_turno_mipypos.csv'
-      ..click();
-
-    html.Url.revokeObjectUrl(url);
-  }
-
-  void _importProductsCsvWeb(BuildContext context) {
-    final uploadInput = html.FileUploadInputElement()..accept = '.csv';
-    uploadInput.click();
-
-    uploadInput.onChange.listen((event) {
-      final file = uploadInput.files?.first;
-      if (file == null) return;
-
-      final reader = html.FileReader();
-      reader.readAsText(file);
-
-      reader.onLoadEnd.listen((event) async {
-        final content = reader.result as String;
-        final lines = content.split('\n');
-
-        for (int i = 1; i < lines.length; i++) {
-          final row = lines[i].trim().split(';');
-          if (row.length < 4) continue;
-
-          final product = {
-            'id': int.tryParse(row[0]) ?? 0,
-            'name': row[1],
-            'price': double.tryParse(row[2]) ?? 0.0,
-            'stock': int.tryParse(row[3]) ?? 0,
-          };
-
-          await DBService.upsertProduct(product);
+      final reader = html.FileReader()..readAsText(file);
+      reader.onLoadEnd.listen((_) async {
+        final result = reader.result;
+        if (result is! String) return;
+        final decoded = jsonDecode(result);
+        if (decoded is Map) {
+          await _importJson(context, Map<String, dynamic>.from(decoded));
         }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Productos importados correctamente')),
-        );
       });
     });
+  }
+
+  Future<void> _exportProductsCsv() async {
+    final products = await DBService.getProducts();
+    final buffer = StringBuffer('id;nombre;stock;price_cash;price_transfer\n');
+    for (final p in products) {
+      buffer.writeln('${p['id']};${p['name']};${p['stock']};${p['price_cash']};${p['price_transfer']}');
+    }
+    _download(buffer.toString(), 'productos_mipypos.csv', 'text/csv');
+  }
+
+  Future<void> _exportShiftCsv() async {
+    final sales = await DBService.getSalesOfDay();
+    double total = 0;
+    double cash = 0;
+    double transfer = 0;
+    for (final sale in sales) {
+      final amount = sale['total'] is num ? (sale['total'] as num).toDouble() : double.tryParse('${sale['total']}') ?? 0;
+      total += amount;
+      final method = '${sale['method'] ?? ''}'.toLowerCase();
+      if (method.contains('efectivo')) {
+        cash += amount;
+      } else {
+        transfer += amount;
+      }
+    }
+    final buffer = StringBuffer('fecha;ventas;efectivo;transferencia\n');
+    buffer.writeln('${DateTime.now().toIso8601String()};$total;$cash;$transfer');
+    _download(buffer.toString(), 'cierre_turno_mipypos.csv', 'text/csv');
   }
 
   @override
@@ -160,7 +100,7 @@ class SyncScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () async {
                 final data = await _buildExportData();
-                _exportJson(context, data);
+                _download(jsonEncode(data), 'backup_mipypos.json', 'application/json');
               },
               child: const Text('Exportar JSON (backup)'),
             ),
@@ -171,12 +111,12 @@ class SyncScreen extends StatelessWidget {
             ),
             const Divider(height: 32),
             ElevatedButton(
-              onPressed: () => _exportProductsCsv(context),
+              onPressed: _exportProductsCsv,
               child: const Text('Exportar productos (CSV)'),
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: () => _exportShiftCsv(context),
+              onPressed: _exportShiftCsv,
               child: const Text('Exportar cierre de turno (CSV)'),
             ),
           ],

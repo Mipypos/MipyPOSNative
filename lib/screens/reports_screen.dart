@@ -23,46 +23,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> loadReport() async {
-    setState(() => loading = true);
+    if (mounted) setState(() => loading = true);
     try {
       todayTotal = await DBService.todaySales();
       topProducts = await DBService.topProducts();
 
-      final salesBox = Hive.box('sales');
-      final saleItemsBox = Hive.box('saleItems');
+      final sales = await DBService.getSalesOfDay();
+      final saleItems = await DBService.getSaleItems();
       double profit = 0;
-      int count = 0;
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day)
-          .toIso8601String()
-          .substring(0, 10);
-
-      for (var sale in salesBox.values) {
-        final date = sale['date'] as String?;
-        if (date != null && date.startsWith(today)) {
-          count++;
-          final saleId =
-              salesBox.keys.elementAt(salesBox.values.toList().indexOf(sale));
-          for (var item in saleItemsBox.values) {
-            if (item['sale_id'] == saleId) {
-              final price = (item['price'] as num?)?.toDouble() ?? 0;
-              final qty = (item['quantity'] as int?) ?? 0;
-              profit += price * qty; // Sin costo, la ganancia es el ingreso
-            }
+      for (final sale in sales) {
+        final saleId = sale['id'];
+        for (final item in saleItems) {
+          if (item['sale_id'] == saleId) {
+            final price = item['price'] is num
+                ? (item['price'] as num).toDouble()
+                : double.tryParse('${item['price']}') ?? 0;
+            final quantity = item['quantity'] is num
+                ? (item['quantity'] as num).toInt()
+                : int.tryParse('${item['quantity']}') ?? 0;
+            profit += price * quantity;
           }
         }
       }
 
       todayProfit = profit;
-      todaySalesCount = count;
+      todaySalesCount = sales.length;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al cargar reportes: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
-    setState(() => loading = false);
   }
 
   @override
@@ -81,30 +75,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _buildSummaryCard(
-                      'Ventas del día',
-                      '\$${todayTotal.toStringAsFixed(2)}',
-                      '$todaySalesCount ventas realizadas',
-                      Colors.blue,
-                      Icons.today),
+                  _buildSummaryCard('Ventas del día', '\$${todayTotal.toStringAsFixed(2)}', '$todaySalesCount ventas realizadas', Colors.blue, Icons.today),
                   const SizedBox(height: 12),
-                  _buildSummaryCard(
-                      'Ganancia estimada',
-                      '\$${todayProfit.toStringAsFixed(2)}',
-                      'Ingreso total (sin costo)',
-                      Colors.green,
-                      Icons.trending_up),
+                  _buildSummaryCard('Ganancia estimada', '\$${todayProfit.toStringAsFixed(2)}', 'Ingreso total (sin costo)', Colors.green, Icons.trending_up),
                   const SizedBox(height: 20),
-                  const Text('Productos más vendidos',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('Productos más vendidos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   topProducts.isEmpty
-                      ? const Card(
-                          child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text('No hay ventas registradas hoy.'),
-                        ))
+                      ? const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No hay ventas registradas hoy.')))
                       : Card(
                           elevation: 2,
                           child: DataTable(
@@ -114,11 +92,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               DataColumn(label: Text('Cant. Vendida')),
                             ],
                             rows: topProducts.asMap().entries.map((entry) {
-                              final i = entry.key + 1;
                               final p = entry.value;
                               return DataRow(cells: [
-                                DataCell(Text('$i')),
-                                DataCell(Text(p['name'] ?? '')),
+                                DataCell(Text('${entry.key + 1}')),
+                                DataCell(Text('${p['name'] ?? ''}')),
                                 DataCell(Text('${p['total_qty'] ?? 0}')),
                               ]);
                             }).toList(),
@@ -130,8 +107,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildSummaryCard(
-      String title, String value, String subtitle, Color color, IconData icon) {
+  Widget _buildSummaryCard(String title, String value, String subtitle, Color color, IconData icon) {
     return Card(
       elevation: 3,
       child: Padding(
@@ -139,18 +115,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Row(
           children: [
             CircleAvatar(
-                radius: 28,
-                backgroundColor: color.withValues(alpha: 0.2),
-                child: Icon(icon, color: color, size: 28)),
+              radius: 28,
+              backgroundColor: color.withOpacity(0.2),
+              child: Icon(icon, color: color, size: 28),
+            ),
             const SizedBox(width: 16),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
-                  style: const TextStyle(fontSize: 14, color: Colors.grey)),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold)),
-              Text(subtitle, style: const TextStyle(fontSize: 12)),
-            ]),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(subtitle, style: const TextStyle(fontSize: 12)),
+              ],
+            ),
           ],
         ),
       ),
