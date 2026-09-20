@@ -15,6 +15,7 @@ class _AreasScreenState extends State<AreasScreen> {
   List<Map<String, dynamic>> products = [];
   List<Map<String, dynamic>> movements = [];
   bool loading = true;
+  int? selectedAreaId;
 
   @override
   void initState() {
@@ -29,7 +30,12 @@ class _AreasScreenState extends State<AreasScreen> {
     products = await DBService.getProducts();
     movements = await DBService.getMovementsOfDay();
 
-    setState(() => loading = false);
+    if (selectedAreaId != null &&
+        !areas.any((area) => area['id'] == selectedAreaId)) {
+      selectedAreaId = null;
+    }
+
+    if (mounted) setState(() => loading = false);
   }
 
   void crearArea() {
@@ -50,9 +56,12 @@ class _AreasScreenState extends State<AreasScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await DBService.addArea(nameCtrl.text.trim());
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              await DBService.addArea(name);
+              if (!context.mounted) return;
               Navigator.pop(context);
-              cargarDatos();
+              await cargarDatos();
             },
             child: const Text("Crear"),
           ),
@@ -139,8 +148,9 @@ class _AreasScreenState extends State<AreasScreen> {
                 confirmedBySeller: false,
               );
 
+              if (!context.mounted) return;
               Navigator.pop(context);
-              cargarDatos();
+              await cargarDatos();
             },
             child: const Text("Enviar"),
           ),
@@ -169,85 +179,165 @@ class _AreasScreenState extends State<AreasScreen> {
       confirmedBySeller: true,
     );
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Entrada confirmada")),
     );
 
-    cargarDatos();
+    await cargarDatos();
+  }
+
+  List<Map<String, dynamic>> get filteredMovements {
+    if (selectedAreaId == null) return movements;
+    return movements.where((movement) {
+      return movement['from_area'] == selectedAreaId ||
+          movement['to_area'] == selectedAreaId;
+    }).toList();
+  }
+
+  String areaName(dynamic id) {
+    final area = areas.where((item) => item['id'] == id).firstOrNull;
+    return area?['name']?.toString() ?? 'Área desconocida';
+  }
+
+  String productName(dynamic id) {
+    final product = products.where((item) => item['id'] == id).firstOrNull;
+    return product?['name']?.toString() ?? 'Producto desconocido';
+  }
+
+  void selectArea(int? areaId) {
+    setState(() => selectedAreaId = areaId);
+    Navigator.pop(context);
+  }
+
+  Widget _buildAreasDrawer(AuthController auth) {
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: const Align(
+                alignment: Alignment.bottomLeft,
+                child: Text(
+                  'Áreas',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.list_alt),
+              title: const Text('Todas las áreas'),
+              selected: selectedAreaId == null,
+              onTap: () => selectArea(null),
+            ),
+            const Divider(),
+            Expanded(
+              child: areas.isEmpty
+                  ? const Center(child: Text('No hay áreas registradas'))
+                  : ListView.builder(
+                      itemCount: areas.length,
+                      itemBuilder: (_, index) {
+                        final area = areas[index];
+                        final id = area['id'] as int?;
+                        return ListTile(
+                          leading: const Icon(Icons.home_work_outlined),
+                          title: Text(area['name']?.toString() ?? 'Sin nombre'),
+                          selected: selectedAreaId == id,
+                          onTap: () => selectArea(id),
+                        );
+                      },
+                    ),
+            ),
+            if (auth.isAdmin)
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Crear área'),
+                onTap: () {
+                  Navigator.pop(context);
+                  crearArea();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    final visibleMovements = filteredMovements;
 
     return Scaffold(
+      drawer: _buildAreasDrawer(auth),
       appBar: AppBar(
-        title: const Text("Áreas e Inventarios"),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            tooltip: 'Mostrar áreas',
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: Text(
+          selectedAreaId == null
+              ? 'Áreas e Inventarios'
+              : areaName(selectedAreaId),
+        ),
         actions: [
-          if (auth.isAdmin)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: crearArea,
-            ),
           if (auth.user?['role'] == 'storekeeper')
             IconButton(
               icon: const Icon(Icons.swap_horiz),
+              tooltip: 'Mover producto',
               onPressed: moverProducto,
             ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
+            onPressed: cargarDatos,
+          ),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    "Áreas registradas:",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                ...areas.map((a) => ListTile(
-                      leading: const Icon(Icons.home_work),
-                      title: Text(a['name']),
-                      subtitle: Text("ID: ${a['id']}"),
-                    )),
+          : visibleMovements.isEmpty
+              ? const Center(child: Text('No hay movimientos para esta área'))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: visibleMovements.length,
+                  itemBuilder: (_, index) {
+                    final movement = visibleMovements[index];
+                    final confirmed = movement['confirmed_by_seller'] == true;
 
-                const Divider(),
-
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    "Movimientos del día:",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-
-                ...movements.map((m) {
-                  final p = products[m['product_index']];
-                  final fromArea = areas[m['from_area']]['name'];
-                  final toArea = areas[m['to_area']]['name'];
-
-                  return Card(
-                    child: ListTile(
-                      title: Text("${p['name']} (${m['qty']})"),
-                      subtitle: Text(
-                        "De: $fromArea → A: $toArea\n"
-                        "Enviado por: ${m['from_user']}\n"
-                        "Confirmado: ${m['confirmed_by_seller'] ? 'Sí' : 'No'}",
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.swap_horiz),
+                        title: Text(
+                          '${productName(movement['product_index'])} (${movement['qty']})',
+                        ),
+                        subtitle: Text(
+                          'De: ${areaName(movement['from_area'])} → '
+                          'A: ${areaName(movement['to_area'])}\n'
+                          'Enviado por: ${movement['from_user']}\n'
+                          'Confirmado: ${confirmed ? 'Sí' : 'No'}',
+                        ),
+                        trailing: (!confirmed && auth.user?['role'] == 'seller')
+                            ? ElevatedButton(
+                                onPressed: () => confirmarMovimiento(movement),
+                                child: const Text('Confirmar'),
+                              )
+                            : null,
                       ),
-                      trailing: (!m['confirmed_by_seller'] &&
-                              auth.user?['role'] == 'seller')
-                          ? ElevatedButton(
-                              onPressed: () => confirmarMovimiento(m),
-                              child: const Text("Confirmar"),
-                            )
-                          : null,
-                    ),
-                  );
-                }),
-              ],
-            ),
+                    );
+                  },
+                ),
     );
   }
 }
