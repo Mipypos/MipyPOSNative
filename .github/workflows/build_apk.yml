@@ -12,6 +12,10 @@ jobs:
     name: Build release APK
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,36 +25,66 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
+          channel: stable
+          cache: true
 
-      - name: Accept Android SDK licenses
+      - name: Configure Android SDK environment
+        shell: bash
         run: |
-          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-          if [ -x "$(command -v sdkmanager)" ]; then
-            yes | sdkmanager --licenses || true
+          set -euo pipefail
+
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "${SDKMANAGER}" ]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
           fi
 
-      - name: Install Android SDK 35
-        run: |
-          if [ -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
-              "platforms;android-35" \
-              "build-tools;35.0.0"
-          elif command -v sdkmanager >/dev/null 2>&1; then
-            sdkmanager \
-              "platforms;android-35" \
-              "build-tools;35.0.0"
-          else
-            echo "sdkmanager not found"
+          if [ -z "${SDKMANAGER}" ] || [ ! -x "${SDKMANAGER}" ]; then
+            echo "sdkmanager was not found"
             exit 1
           fi
 
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+          echo "SDKMANAGER=${SDKMANAGER}"
+
+          echo "${ANDROID_HOME}/platform-tools" >> "${GITHUB_PATH}"
+          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "${GITHUB_PATH}"
+
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Verify Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f "${ANDROID_HOME}/platforms/android-35/android.jar"
+
+          echo "Android SDK 35 detected:"
+          ls -lh "${ANDROID_HOME}/platforms/android-35/android.jar"
+
+          echo "Installed platforms:"
+          ls -la "${ANDROID_HOME}/platforms"
+
       - name: Flutter pub get
-        run: flutter pub get
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Verify resolved dependencies
+        run: |
+          flutter pub deps --style=compact | grep -E "file_picker|csv" || true
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -58,7 +92,7 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build APK release
+      - name: Build release APK
         run: flutter build apk --release --no-shrink
 
       - name: Upload APK artifact
@@ -66,3 +100,4 @@ jobs:
         with:
           name: app-release-apk
           path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
