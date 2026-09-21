@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
 import '../services/db_service.dart';
 
 class ImportProductsScreen extends StatefulWidget {
@@ -19,29 +21,46 @@ class _ImportProductsScreenState extends State<ImportProductsScreen> {
       allowedExtensions: ['csv'],
       withData: true,
     );
+
     if (result == null || result.files.isEmpty) return;
 
-    final bytes = result.files.first.bytes;
+    final file = result.files.first;
+    final bytes = file.bytes;
+
     if (bytes == null) {
-      setState(() => status = 'No se pudieron leer los datos del archivo.');
+      if (mounted) {
+        setState(() => status = 'No se pudieron leer los datos del archivo.');
+      }
       return;
     }
 
-    final lines = const LineSplitter().convert(utf8.decode(bytes, allowMalformed: true));
+    final content = utf8.decode(bytes, allowMalformed: true);
+    final lines = const LineSplitter().convert(content);
+
     var count = 0;
+
     for (final line in lines.skip(1)) {
       final parts = line.split(',');
       if (parts.length < 4) continue;
+
+      final name = parts[0].trim();
+      final stock = int.tryParse(parts[1].trim()) ?? 0;
+      final priceCash = double.tryParse(parts[2].trim()) ?? 0.0;
+      final priceTransfer = double.tryParse(parts[3].trim()) ?? 0.0;
+
       await DBService.insertProduct({
-        'name': parts[0].trim(),
-        'stock': int.tryParse(parts[1].trim()) ?? 0,
-        'price_cash': double.tryParse(parts[2].trim()) ?? 0.0,
-        'price_transfer': double.tryParse(parts[3].trim()) ?? 0.0,
+        'name': name,
+        'stock': stock,
+        'price_cash': priceCash,
+        'price_transfer': priceTransfer,
       });
+
       count++;
     }
 
-    if (mounted) setState(() => status = 'Importación completada: $count productos');
+    if (mounted) {
+      setState(() => status = 'Importación completada: $count productos');
+    }
   }
 
   @override
