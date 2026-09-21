@@ -1,17 +1,18 @@
-// lib/services/pdf_service_web.dart
-import 'dart:html' as html;
-import 'dart:typed_data';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 class PdfService {
-  /// Genera y descarga un PDF en Web usando Blob + AnchorElement.
   static Future<void> generateTicket(Uint8List bytes) async {
-    final blob = html.Blob([bytes], 'application/pdf');
-    final url = html.Url.createObjectUrlFromBlob(blob);
+    if (kIsWeb) {
+      return;
+    }
 
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'ticket.pdf'
-      ..click();
+    final dir = await getDownloadsDirectory() ?? await getTemporaryDirectory();
+    final file = File('${dir.path}/ticket.pdf');
 
-    html.Url.revokeObjectUrl(url);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes);
   }
 }
