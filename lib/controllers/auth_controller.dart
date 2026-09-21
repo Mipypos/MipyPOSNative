@@ -1,5 +1,6 @@
 // lib/controllers/auth_controller.dart
 import 'package:flutter/foundation.dart';
+
 import '../services/db_service.dart';
 
 class AuthController extends ChangeNotifier {
@@ -12,66 +13,84 @@ class AuthController extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isLoggedIn => _user != null;
 
-  void _setLoading(bool v) {
-    _loading = v;
+  void _setLoading(bool value) {
+    _loading = value;
     notifyListeners();
   }
 
-  /// Carga la sesión desde almacenamiento persistente si existe.
   Future<void> loadFromStorage() async {
     _setLoading(true);
+
     try {
       final saved = await DBService.getConfig('current_user');
-      if (saved != null && saved is String) {
-        final u = await DBService.getUser(saved);
-        if (u != null) {
-          _user = Map<String, dynamic>.from(u);
+
+      if (saved is String && saved.isNotEmpty) {
+        final storedUser = await DBService.getUser(saved);
+
+        if (storedUser != null) {
+          _user = Map<String, dynamic>.from(storedUser);
           notifyListeners();
         }
       }
-    } catch (_) {
-      // No bloquear la app si no hay persistencia
     } finally {
       _setLoading(false);
     }
   }
 
-  /// login(username, password, {persist:false})
-  Future<bool> login(String username, String password, {bool persist = false}) async {
+  Future<bool> login(
+    String username,
+    String password, {
+    bool persist = false,
+  }) async {
     _setLoading(true);
+
     try {
       if (username.isEmpty || password.isEmpty) {
         return false;
       }
 
-      final u = await DBService.login(username, password);
-      if (u != null) {
-        _user = Map<String, dynamic>.from(u);
-        if (persist) {
-          await DBService.putConfig('current_user', username);
-        }
-        notifyListeners();
-        return true;
+      final loggedUser = await DBService.login(username, password);
+
+      if (loggedUser == null) {
+        return false;
       }
-      return false;
+
+      _user = Map<String, dynamic>.from(loggedUser);
+
+      if (persist) {
+        await DBService.putConfig('current_user', username);
+      }
+
+      notifyListeners();
+      return true;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Cierra sesión y elimina persistencia
   Future<void> logout({bool clearPersist = true}) async {
     _user = null;
+
     if (clearPersist) {
       try {
         await DBService.deleteConfig('current_user');
-      } catch (_) {}
+      } catch (_) {
+        // La sesión local ya fue eliminada; no bloquear el logout.
+      }
     }
+
     notifyListeners();
   }
 
-  bool get isAdmin => _user?['role'] == 'admin';
-  bool get isSeller => _user?['role'] == 'seller';
-  bool get isStorekeeper => _user?['role'] == 'storekeeper';
-  bool get isGuest => _user?['role'] == 'guest';
+  String? get role => _user?['role']?.toString();
+
+  bool get isAdmin => role == 'admin';
+
+  bool get isSeller => role == 'seller';
+
+  bool get isStorekeeper => role == 'storekeeper';
+
+  bool get isGuest => role == 'guest';
+
+  bool get isSupervisor => role == 'supervisor';
 }
