@@ -54,9 +54,7 @@ class SyncScreen extends StatelessWidget {
 
     if (result == null || result.files.isEmpty) return;
 
-    final file = result.files.first;
-    final bytes = file.bytes;
-
+    final bytes = result.files.first.bytes;
     if (bytes == null) return;
 
     final data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
@@ -109,12 +107,29 @@ class SyncScreen extends StatelessWidget {
   }
 
   Future<void> _exportShiftCsv(BuildContext context) async {
-    final cierre = await DBService.getShiftSummary();
+    final openSession = await DBService.getOpenCash();
+    final summary = openSession == null
+        ? <String, double>{
+            'total': 0,
+            'ventas': 0,
+            'efectivo': 0,
+            'transferencia': 0,
+            'tarjeta': 0,
+          }
+        : await DBService.getSessionPaymentSummary(
+            (openSession['id'] is int)
+                ? openSession['id'] as int
+                : int.tryParse('${openSession['id']}') ?? -1,
+          );
 
     final buffer = StringBuffer();
-    buffer.writeln('fecha;ventas;efectivo;tarjeta');
+    buffer.writeln('fecha;ventas;efectivo;transferencia;tarjeta');
     buffer.writeln(
-      '${cierre['fecha']};${cierre['ventas']};${cierre['efectivo']};${cierre['tarjeta']}',
+      '${DateTime.now().toIso8601String()};'
+      '${summary['ventas'] ?? 0};'
+      '${summary['efectivo'] ?? 0};'
+      '${summary['transferencia'] ?? 0};'
+      '${summary['tarjeta'] ?? 0}',
     );
 
     final path = await FilePicker.platform.saveFile(
