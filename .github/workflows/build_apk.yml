@@ -1,16 +1,26 @@
 name: Build APK
+
 on:
   push:
-    branches: [ ci/add-github-actions ]
-  workflow_dispatch: {}
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build-apk:
     name: Build release APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -19,16 +29,24 @@ jobs:
 
       - name: Accept Android SDK licenses
         run: |
-          yes | sdkmanager --licenses || true
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          if [ -x "$(command -v sdkmanager)" ]; then
+            yes | sdkmanager --licenses || true
+          fi
 
-      - name: Ensure Android SDK 35 is installed
+      - name: Install Android SDK 35
         run: |
           if [ -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" --install
+            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
           elif command -v sdkmanager >/dev/null 2>&1; then
-            sdkmanager "platforms;android-35"
+            sdkmanager \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
           else
-            echo "sdkmanager not found; proceeding and hoping Flutter action provided SDK"
+            echo "sdkmanager not found"
+            exit 1
           fi
 
       - name: Flutter pub get
