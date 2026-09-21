@@ -1,17 +1,13 @@
-// lib/screens/sync_screen_web.dart
 import 'dart:convert';
-import 'dart:html' as html;
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
 import '../services/db_service.dart';
 
 class SyncScreen extends StatelessWidget {
   const SyncScreen({super.key});
-
-  // Ejemplo de datos de productos
-  List<Map<String, dynamic>> _dummyProducts() => [
-        {'id': 1, 'nombre': 'Café', 'precio': 25.0},
-        {'id': 2, 'nombre': 'Pan', 'precio': 10.0},
-      ];
 
   Future<Map<String, dynamic>> _buildExportData() async {
     final productos = await DBService.getProducts();
@@ -28,19 +24,43 @@ class SyncScreen extends StatelessWidget {
     };
   }
 
-  void _exportJson(BuildContext context, Map<String, dynamic> data) {
+  Future<void> _exportJson(BuildContext context, Map<String, dynamic> data) async {
     final jsonString = jsonEncode(data);
-    final blob = html.Blob([jsonString], 'application/json');
-    final url = html.Url.createObjectUrlFromBlob(blob);
+    final path = await FilePicker.platform.saveFile(
+      fileName: 'backup_mipypos.json',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
 
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'backup_mipypos.json'
-      ..click();
+    if (path == null) return;
 
-    html.Url.revokeObjectUrl(url);
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonString);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backup exportado correctamente')),
+      );
+    }
   }
 
-  void _importJson(BuildContext context, Map<String, dynamic> data) async {
+  Future<void> _openJsonUpload(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    final bytes = file.bytes;
+
+    if (bytes == null) return;
+
+    final data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+
     if (data['productos'] is List) {
       for (final item in List.from(data['productos'])) {
         if (item is Map<String, dynamic>) {
@@ -51,27 +71,11 @@ class SyncScreen extends StatelessWidget {
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('JSON importado correctamente')),
-    );
-  }
-
-  void _openJsonUpload(BuildContext context) {
-    final uploadInput = html.FileUploadInputElement()..accept = '.json';
-    uploadInput.click();
-
-    uploadInput.onChange.listen((event) {
-      final file = uploadInput.files?.first;
-      if (file == null) return;
-
-      final reader = html.FileReader();
-      reader.readAsText(file);
-      reader.onLoadEnd.listen((event) {
-        final content = reader.result as String;
-        final data = jsonDecode(content) as Map<String, dynamic>;
-        _importJson(context, data);
-      });
-    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('JSON importado correctamente')),
+      );
+    }
   }
 
   Future<void> _exportProductsCsv(BuildContext context) async {
@@ -81,78 +85,61 @@ class SyncScreen extends StatelessWidget {
 
     for (final p in products) {
       buffer.writeln(
-          '${p['id']};${p['name']};${p['stock']};${p['price_cash']};${p['price_transfer']}');
+        '${p['id']};${p['name']};${p['stock']};${p['price_cash']};${p['price_transfer']}',
+      );
     }
 
-    final blob = html.Blob([buffer.toString()], 'text/csv');
-    final url = html.Url.createObjectUrlFromBlob(blob);
+    final path = await FilePicker.platform.saveFile(
+      fileName: 'productos_mipypos.csv',
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
 
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'productos_mipypos.csv'
-      ..click();
+    if (path == null) return;
 
-    html.Url.revokeObjectUrl(url);
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(buffer.toString());
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('CSV exportado correctamente')),
+      );
+    }
   }
 
-  // Exportar CSV de cierre de turno (ejemplo)
-  void _exportShiftCsv(BuildContext context) async {
+  Future<void> _exportShiftCsv(BuildContext context) async {
     final cierre = await DBService.getShiftSummary();
 
     final buffer = StringBuffer();
     buffer.writeln('fecha;ventas;efectivo;tarjeta');
     buffer.writeln(
-        '${cierre['fecha']};${cierre['ventas']};${cierre['efectivo']};${cierre['tarjeta']}');
+      '${cierre['fecha']};${cierre['ventas']};${cierre['efectivo']};${cierre['tarjeta']}',
+    );
 
-    final blob = html.Blob([buffer.toString()], 'text/csv');
-    final url = html.Url.createObjectUrlFromBlob(blob);
+    final path = await FilePicker.platform.saveFile(
+      fileName: 'cierre_turno_mipypos.csv',
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
 
-    final anchor = html.AnchorElement(href: url)
-      ..download = 'cierre_turno_mipypos.csv'
-      ..click();
+    if (path == null) return;
 
-    html.Url.revokeObjectUrl(url);
-  }
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(buffer.toString());
 
-  void _importProductsCsvWeb(BuildContext context) {
-    final uploadInput = html.FileUploadInputElement()..accept = '.csv';
-    uploadInput.click();
-
-    uploadInput.onChange.listen((event) {
-      final file = uploadInput.files?.first;
-      if (file == null) return;
-
-      final reader = html.FileReader();
-      reader.readAsText(file);
-
-      reader.onLoadEnd.listen((event) async {
-        final content = reader.result as String;
-        final lines = content.split('\n');
-
-        for (int i = 1; i < lines.length; i++) {
-          final row = lines[i].trim().split(';');
-          if (row.length < 4) continue;
-
-          final product = {
-            'id': int.tryParse(row[0]) ?? 0,
-            'name': row[1],
-            'price': double.tryParse(row[2]) ?? 0.0,
-            'stock': int.tryParse(row[3]) ?? 0,
-          };
-
-          await DBService.upsertProduct(product);
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Productos importados correctamente')),
-        );
-      });
-    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cierre exportado correctamente')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sincronización (Web)')),
+      appBar: AppBar(title: const Text('Sincronización')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -160,7 +147,7 @@ class SyncScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () async {
                 final data = await _buildExportData();
-                _exportJson(context, data);
+                await _exportJson(context, data);
               },
               child: const Text('Exportar JSON (backup)'),
             ),
