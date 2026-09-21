@@ -5,6 +5,7 @@ plugins {
 
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
+
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
@@ -12,22 +13,28 @@ if (localPropertiesFile.exists()) {
 }
 
 def flutterRoot = localProperties.getProperty('flutter.sdk')
+
 if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define flutter.sdk in local.properties.")
+    throw new GradleException(
+        "Flutter SDK not found. Define flutter.sdk in local.properties."
+    )
 }
 
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.mipypos.app"
-    compileSdk = 34
+
+    // El plugin flutter_plugin_android_lifecycle requiere SDK 35.
+    compileSdk = 35
 
     defaultConfig {
         applicationId "com.mipypos.app"
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 35
         versionCode 1
         versionName "1.0"
+
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -46,6 +53,7 @@ android {
             shrinkResources false
             signingConfig signingConfigs.debug
         }
+
         debug {
             minifyEnabled false
             shrinkResources false
@@ -53,9 +61,13 @@ android {
     }
 
     packagingOptions {
-        exclude 'META-INF/proguard/androidx-*.pro'
-        exclude 'META-INF/LICENSE'
-        exclude 'META-INF/NOTICE'
+        resources {
+            excludes += [
+                'META-INF/proguard/androidx-*.pro',
+                'META-INF/LICENSE',
+                'META-INF/NOTICE'
+            ]
+        }
     }
 }
 
