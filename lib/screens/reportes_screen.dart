@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/db_service.dart';
 import '../widgets/branding_widgets.dart';
 
@@ -18,8 +19,8 @@ class _ReportesScreenState extends State<ReportesScreen> {
   List<Map<String, dynamic>> areas = [];
   List<Map<String, dynamic>> movimientos = [];
 
-  String filtroUsuario = "Todos";
-  String filtroMetodo = "Todos";
+  String filtroUsuario = 'Todos';
+  String filtroMetodo = 'Todos';
 
   double totalGeneral = 0;
   double totalEfectivo = 0;
@@ -36,17 +37,37 @@ class _ReportesScreenState extends State<ReportesScreen> {
   }
 
   Future<void> cargarDatos() async {
-    setState(() => loading = true);
+    if (mounted) {
+      setState(() => loading = true);
+    }
 
-    productos = await DBService.getProducts();
-    areas = await DBService.getAreas();
-    ventas = await DBService.getSalesOfDay();
-    items = await DBService.getSaleItems();
-    movimientos = await DBService.getMovementsOfDay();
+    try {
+      final loadedProducts = await DBService.getProducts();
+      final loadedAreas = await DBService.getAreas();
+      final loadedSales = await DBService.getSalesOfDay();
+      final loadedItems = await DBService.getSaleItems();
+      final loadedMovements = await DBService.getMovementsOfDay();
 
-    calcularTotales();
+      productos = loadedProducts;
+      areas = loadedAreas;
+      ventas = loadedSales;
+      items = loadedItems;
+      movimientos = loadedMovements;
 
-    setState(() => loading = false);
+      calcularTotales();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar reportes: $e'),
+          ),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() => loading = false);
+    }
   }
 
   void calcularTotales() {
@@ -58,62 +79,120 @@ class _ReportesScreenState extends State<ReportesScreen> {
     totalPorProducto = {};
     totalPorArea = {};
 
-    for (var v in ventas) {
-      final total = (v['total'] ?? 0).toDouble();
-      final user = v['user'] ?? 'desconocido';
-      final method = v['method'];
+    for (final venta in ventas) {
+      final total = _toDouble(venta['total']);
+      final user = '${venta['user'] ?? 'desconocido'}';
+      final method = '${venta['method'] ?? ''}'.toLowerCase();
 
       totalGeneral += total;
 
-      if (method == 'Efectivo') totalEfectivo += total;
-      if (method == 'Transferencia') totalTransferencia += total;
+      if (method.contains('efectivo')) {
+        totalEfectivo += total;
+      }
 
-      totalPorUsuario[user] = (totalPorUsuario[user] ?? 0) + total;
+      if (method.contains('transferencia') ||
+          method.contains('tarjeta')) {
+        totalTransferencia += total;
+      }
+
+      totalPorUsuario[user] =
+          (totalPorUsuario[user] ?? 0.0) + total;
     }
 
-    for (var item in items) {
-      final pIndex = item['product_id'];
-      final qty = item['quantity'];
-      final price = item['price'];
+    for (final item in items) {
+      final productId = _toInt(item['product_id']);
+      final productName = _productName(productId);
+      final quantity = _toDouble(item['quantity']);
+      final price = _toDouble(item['price']);
 
-      final name = productos[pIndex]['name'];
-
-      totalPorProducto[name] = (totalPorProducto[name] ?? 0) + (qty * price);
+      totalPorProducto[productName] =
+          (totalPorProducto[productName] ?? 0.0) +
+              (quantity * price);
     }
 
-    for (var m in movimientos) {
-      final areaName = areas[m['to_area']]['name'];
-      final qty = m['qty'];
-      final pIndex = m['product_index'];
-      final name = productos[pIndex]['name'];
+    for (final movement in movimientos) {
+      final areaId = _toInt(movement['to_area']);
+      final areaName = _areaName(areaId);
+      final quantity = _toDouble(movement['qty']);
 
-      totalPorArea[areaName] = (totalPorArea[areaName] ?? 0) + qty;
+      totalPorArea[areaName] =
+          (totalPorArea[areaName] ?? 0.0) + quantity;
     }
   }
 
   List<Map<String, dynamic>> aplicarFiltros() {
-    return ventas.where((v) {
-      final user = v['user'];
-      final method = v['method'];
+    return ventas.where((venta) {
+      final user = '${venta['user'] ?? ''}';
+      final method = '${venta['method'] ?? ''}';
 
-      if (filtroUsuario != "Todos" && filtroUsuario != user) return false;
-      if (filtroMetodo != "Todos" && filtroMetodo != method) return false;
+      if (filtroUsuario != 'Todos' &&
+          filtroUsuario != user) {
+        return false;
+      }
+
+      if (filtroMetodo != 'Todos' &&
+          filtroMetodo != method) {
+        return false;
+      }
 
       return true;
     }).toList();
   }
 
   List<Map<String, dynamic>> itemsDeVenta(int saleId) {
-    return items.where((i) => i['sale_id'] == saleId).toList();
+    return items.where((item) {
+      return _toInt(item['sale_id']) == saleId;
+    }).toList();
+  }
+
+  String _productName(int productId) {
+    for (final product in productos) {
+      if (_toInt(product['id']) == productId) {
+        return '${product['name'] ?? 'Producto desconocido'}';
+      }
+    }
+
+    return 'Producto desconocido';
+  }
+
+  String _areaName(int areaId) {
+    for (final area in areas) {
+      if (_toInt(area['id']) == areaId) {
+        return '${area['name'] ?? 'Área desconocida'}';
+      }
+    }
+
+    return 'Área desconocida';
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? -1;
+  }
+
+  double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value') ?? 0.0;
+  }
+
+  String _money(double value) {
+    return '\$${value.toStringAsFixed(2)}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtradas = aplicarFiltros();
+    final ventasFiltradas = aplicarFiltros();
+
+    final users = ventas
+        .map((venta) => '${venta['user'] ?? ''}')
+        .where((user) => user.isNotEmpty)
+        .toSet()
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Reportes"),
+        title: const Text('Reportes'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -123,175 +202,254 @@ class _ReportesScreenState extends State<ReportesScreen> {
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: BrandLogo(height: 56),
-                ),
-
-                const Text("Filtros",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-
-                // -------------------------
-                // FILTRO USUARIO
-                // -------------------------
-                DropdownButtonFormField<String>(
-                  value: filtroUsuario,
-                  decoration: const InputDecoration(labelText: "Usuario"),
-                  items: [
-                    const DropdownMenuItem(value: "Todos", child: Text("Todos")),
-                    ...ventas
-                        .map((v) => v['user'])
-                        .where((u) => u != null)
-                        .toSet()
-                        .map((u) => DropdownMenuItem(
-                              value: u,
-                              child: Text(u),
-                            ))
-                  ],
-                  onChanged: (v) => setState(() => filtroUsuario = v!),
-                ),
-
-                // -------------------------
-                // FILTRO MÉTODO
-                // -------------------------
-                DropdownButtonFormField<String>(
-                  value: filtroMetodo,
-                  decoration: const InputDecoration(labelText: "Método"),
-                  items: const [
-                    DropdownMenuItem(value: "Todos", child: Text("Todos")),
-                    DropdownMenuItem(value: "Efectivo", child: Text("Efectivo")),
-                    DropdownMenuItem(
-                        value: "Transferencia", child: Text("Transferencia")),
-                  ],
-                  onChanged: (v) => setState(() => filtroMetodo = v!),
-                ),
-
-                const SizedBox(height: 20),
-
-                // -------------------------
-                // RESUMEN DEL DÍA
-                // -------------------------
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Resumen del día",
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text("Total general: \$${totalGeneral.toStringAsFixed(2)}"),
-                        Text("Efectivo: \$${totalEfectivo.toStringAsFixed(2)}"),
-                        Text(
-                            "Transferencia: \$${totalTransferencia.toStringAsFixed(2)}"),
-                      ],
+          : RefreshIndicator(
+              onRefresh: cargarDatos,
+              child: ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: BrandLogo(height: 56),
+                  ),
+                  const Text(
+                    'Filtros',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-
-                // -------------------------
-                // TOTALES POR USUARIO
-                // -------------------------
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Totales por usuario",
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        ...totalPorUsuario.keys.map((u) => Text(
-                            "$u: \$${totalPorUsuario[u]!.toStringAsFixed(2)}")),
-                      ],
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: filtroUsuario,
+                    decoration: const InputDecoration(
+                      labelText: 'Usuario',
                     ),
-                  ),
-                ),
-
-                // -------------------------
-                // TOTALES POR PRODUCTO
-                // -------------------------
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Totales por producto",
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        ...totalPorProducto.keys.map((p) => Text(
-                            "$p: \$${totalPorProducto[p]!.toStringAsFixed(2)}")),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // -------------------------
-                // TOTALES POR ÁREA
-                // -------------------------
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Entradas por área",
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        ...totalPorArea.keys.map((a) => Text(
-                            "$a: ${totalPorArea[a]!.toStringAsFixed(0)} unidades")),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const Text("Ventas filtradas",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-
-                // -------------------------
-                // VENTAS FILTRADAS
-                // -------------------------
-                ...filtradas.map((v) {
-                  final saleId = ventas.indexOf(v);
-                  final saleItems = itemsDeVenta(saleId);
-
-                  return Card(
-                    child: ExpansionTile(
-                      title: Text(
-                        "Venta #$saleId - \$${v['total'].toStringAsFixed(2)}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                    items: [
+                      const DropdownMenuItem(
+                        value: 'Todos',
+                        child: Text('Todos'),
                       ),
-                      subtitle: Text(
-                        "${v['method']} • ${v['user']} • ${v['date']}",
-                      ),
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Text("Productos:",
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                      ...users.map(
+                        (user) => DropdownMenuItem(
+                          value: user,
+                          child: Text(user),
                         ),
-                        ...saleItems.map((item) {
-                          final p = productos[item['product_id']]['name'];
-                          return ListTile(
-                            leading: const Icon(Icons.shopping_bag),
-                            title: Text("$p x${item['quantity']}"),
-                            subtitle: Text(
-                                "Precio: \$${item['price'].toStringAsFixed(2)}"),
-                          );
-                        }),
-                      ],
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => filtroUsuario = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: filtroMetodo,
+                    decoration: const InputDecoration(
+                      labelText: 'Método de pago',
                     ),
-                  );
-                }),
-
-                const SizedBox(height: 16),
-                const CopyrightText(),
-              ],
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Todos',
+                        child: Text('Todos'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Efectivo',
+                        child: Text('Efectivo'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Transferencia',
+                        child: Text('Transferencia'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Tarjeta',
+                        child: Text('Tarjeta'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Mixto',
+                        child: Text('Mixto'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => filtroMetodo = value);
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Resumen del día',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text('Total general: ${_money(totalGeneral)}'),
+                          Text('Efectivo: ${_money(totalEfectivo)}'),
+                          Text(
+                            'Transferencia/tarjeta: '
+                            '${_money(totalTransferencia)}',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Totales por usuario',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (totalPorUsuario.isEmpty)
+                            const Text('Sin datos')
+                          else
+                            ...totalPorUsuario.entries.map(
+                              (entry) => Text(
+                                '${entry.key}: ${_money(entry.value)}',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Totales por producto',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (totalPorProducto.isEmpty)
+                            const Text('Sin datos')
+                          else
+                            ...totalPorProducto.entries.map(
+                              (entry) => Text(
+                                '${entry.key}: ${_money(entry.value)}',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Entradas por área',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (totalPorArea.isEmpty)
+                            const Text('Sin datos')
+                          else
+                            ...totalPorArea.entries.map(
+                              (entry) => Text(
+                                '${entry.key}: '
+                                '${entry.value.toStringAsFixed(0)} unidades',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ventas filtradas',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (ventasFiltradas.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No hay ventas para mostrar.'),
+                      ),
+                    )
+                  else
+                    ...ventasFiltradas.map(_buildSaleCard),
+                  const SizedBox(height: 16),
+                  const CopyrightText(),
+                ],
+              ),
             ),
+    );
+  }
+
+  Widget _buildSaleCard(Map<String, dynamic> sale) {
+    final saleId = _toInt(sale['id']);
+    final saleItems = itemsDeVenta(saleId);
+    final total = _toDouble(sale['total']);
+
+    return Card(
+      child: ExpansionTile(
+        title: Text(
+          'Venta #$saleId - ${_money(total)}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          '${sale['method'] ?? ''} • '
+          '${sale['user'] ?? ''} • '
+          '${sale['date'] ?? ''}',
+        ),
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Productos:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          ...saleItems.map((item) {
+            final productName =
+                item['name']?.toString() ??
+                _productName(_toInt(item['product_id']));
+            final quantity = _toDouble(item['quantity']);
+            final price = _toDouble(item['price']);
+
+            return ListTile(
+              leading: const Icon(Icons.shopping_bag),
+              title: Text(
+                '$productName x${quantity.toStringAsFixed(0)}',
+              ),
+              subtitle: Text(
+                'Precio: ${_money(price)}',
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

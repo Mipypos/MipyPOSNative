@@ -39,7 +39,7 @@ class MainActivity: FlutterActivity() {
                     Log.d("MainActivity", "Products count from Dart: ${'$'}result")
                 }
 
-                override fun error(errorCode: String?, errorMessage: String?, errorDetails: Any?) {
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
                     Log.e("MainActivity", "Error calling Dart: ${'$'}errorMessage")
                 }
 

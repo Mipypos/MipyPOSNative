@@ -1,5 +1,5 @@
-// lib/controllers/auth_controller.dart
 import 'package:flutter/foundation.dart';
+
 import '../services/db_service.dart';
 
 class AuthController extends ChangeNotifier {
@@ -9,73 +9,108 @@ class AuthController extends ChangeNotifier {
   AuthController();
 
   Map<String, dynamic>? get user => _user;
+
   bool get isLoading => _loading;
 
-  /// Nuevo getter esperado por main.dart
   bool get isLoggedIn => _user != null;
 
-  void _setLoading(bool v) {
-    _loading = v;
+  String? get role => _user?['role']?.toString();
+
+  bool get isAdmin => role == 'admin';
+
+  bool get isSeller => role == 'seller';
+
+  bool get isStorekeeper => role == 'storekeeper';
+
+  bool get isGuest => role == 'guest';
+
+  bool get isSupervisor => role == 'supervisor';
+
+  void _setLoading(bool value) {
+    _loading = value;
     notifyListeners();
   }
 
-  /// Carga la sesión desde almacenamiento persistente si existe.
-  /// Usa DBService.getUser para restaurar sin validar contraseña.
   Future<void> loadFromStorage() async {
     _setLoading(true);
+
     try {
-      final saved = await DBService.getConfig('current_user');
-      if (saved != null && saved is String) {
-        final u = await DBService.getUser(saved);
-        if (u != null) {
-          _user = Map<String, dynamic>.from(u);
-          notifyListeners();
-        }
+      final savedUser = await DBService.getConfig('current_user');
+
+      if (savedUser is! String || savedUser.isEmpty) {
+        return;
       }
-    } catch (_) {
-      // no bloquear la app si no hay persistencia
+
+      final storedUser = await DBService.getUser(savedUser);
+
+      if (storedUser == null) {
+        return;
+      }
+
+      _user = Map<String, dynamic>.from(storedUser);
+      notifyListeners();
+    } catch (error) {
+      debugPrint('Error loading stored user: $error');
     } finally {
       _setLoading(false);
     }
   }
 
-  /// login(username, password, {persist:false})
-  /// Si persist=true guarda solo el username en config (Web safe).
-  Future<bool> login(String username, String password, {bool persist = false}) async {
+  Future<bool> login(
+    String username,
+    String password, {
+    bool persist = false,
+  }) async {
     _setLoading(true);
+
     try {
-      final pass = password ?? '';
-      if (username.isEmpty || pass.isEmpty) {
+      final normalizedUsername = username.trim();
+
+      if (normalizedUsername.isEmpty || password.isEmpty) {
         return false;
       }
 
-      final u = await DBService.login(username, pass);
-      if (u != null) {
-        _user = Map<String, dynamic>.from(u);
-        if (persist) {
-          // Guardar solo el username para evitar problemas en Web con objetos complejos
-          await DBService.putConfig('current_user', username);
-        }
-        notifyListeners();
-        return true;
+      final loggedUser = await DBService.login(
+        normalizedUsername,
+        password,
+      );
+
+      if (loggedUser == null) {
+        return false;
       }
+
+      _user = Map<String, dynamic>.from(loggedUser);
+
+      if (persist) {
+        await DBService.putConfig(
+          'current_user',
+          normalizedUsername,
+        );
+      }
+
+      notifyListeners();
+      return true;
+    } catch (error) {
+      debugPrint('Login error: $error');
       return false;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Cierra sesión y elimina persistencia si existe.
-  Future<void> logout({bool clearPersist = true}) async {
+  Future<void> logout({
+    bool clearPersist = true,
+  }) async {
     _user = null;
+
     if (clearPersist) {
       try {
         await DBService.deleteConfig('current_user');
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Error clearing stored user: $error');
+      }
     }
+
     notifyListeners();
   }
-
-  bool get isAdmin => _user?['role'] == 'admin';
-  bool get isSupervisor => _user?['role'] == 'supervisor';
 }

@@ -5,6 +5,7 @@ plugins {
 
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
+
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
@@ -12,15 +13,20 @@ if (localPropertiesFile.exists()) {
 }
 
 def flutterRoot = localProperties.getProperty('flutter.sdk')
+
 if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define flutter.sdk in local.properties.")
+    throw new GradleException(
+        "Flutter SDK not found. Define flutter.sdk in local.properties."
+    )
 }
 
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.mipypos.app"
-     compileSdk = 35
+
+    // El plugin flutter_plugin_android_lifecycle requiere SDK 35.
+    compileSdk = 35
 
     defaultConfig {
         applicationId "com.mipypos.app"
@@ -28,20 +34,49 @@ android {
         targetSdk = 35
         versionCode 1
         versionName "1.0"
+
+        vectorDrawables.useSupportLibrary = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     buildTypes {
         release {
             minifyEnabled false
             shrinkResources false
+            signingConfig signingConfigs.debug
+        }
+
+        debug {
+            minifyEnabled false
+            shrinkResources false
         }
     }
 
-    kotlin {
-        jvmToolchain(17)
+    packagingOptions {
+        resources {
+            excludes += [
+                'META-INF/proguard/androidx-*.pro',
+                'META-INF/LICENSE',
+                'META-INF/NOTICE'
+            ]
+        }
     }
 }
 
+flutter {
+    source '../..'
+}
+
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24"
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.15.0'
 }
